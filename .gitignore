@@ -1,0 +1,7 @@
+*.pyc
+*.pyo
+.*.swp
+*/**/__pycache__/*
+.vscode/*
+.pylintrc
+config.ini
