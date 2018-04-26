@@ -1,4 +1,5 @@
 import argparse
+import json
 
 from splunklib import client
 from splunklib import binding
@@ -35,14 +36,9 @@ def main():
         service.http = binding.HttpLib(binding.handler(timeout=params_query.timeout))
 
     ag = getter.Getter(service, config, args.config, params_query)
-    response = ag.run()
 
-    alerts = []
-    for alert in response:
-        alerts.append(alert)
-
-    if alerts:
-        ag.print_alerts(alerts)
+    for alert in ag.run():
+        print(json.dumps(alert))
 
 
 if __name__ == "__main__":
