@@ -1,4 +1,5 @@
 import argparse
+import logging
 import json
 
 from splunklib import client
@@ -20,9 +21,13 @@ def main():
     parser.add_argument("-c", "--config", help="path to configuration file")
     args = parser.parse_args()
 
-    config = params.create_config(args.config)
-    params_connection = params.Connection.from_config(config)
-    params_query = params.Query.from_config(config)
+    try:
+        config = params.create_config(args.config)
+        params_connection = params.Connection.from_config(config)
+        params_query = params.Query.from_config(config)
+    except Exception as exc:
+        logging.critical(str(exc))
+        return
 
     service = client.connect(
         scheme=params_connection.scheme,
@@ -42,4 +47,5 @@ def main():
 
 
 if __name__ == "__main__":
+    logging.basicConfig(format='[%(levelname)s] %(message)s', level=logging.ERROR)
     main()
