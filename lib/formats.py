@@ -8,16 +8,18 @@ EVENTS_SOURCETYPE = "asoc:dns:event"
 
 class Full(object):
     @staticmethod
-    def get_query():
+    def get_query(params):
+        mvexpand = "| mvexpand threats{} " if params.unfold else ""
+
         return (
-            'search index=* sourcetype="{0}" type="alert" threats{{}}=* _index_earliest=-5m '
+            'search index="{0}" sourcetype="{1}" type="alert" threats{{}}=* _index_earliest=-{2}m {3}'
             '| lookup asocthreats name AS threats{{}} OUTPUT title, severity, policy '
             '| eval policy=if(isnull(policy), 0, policy) '
             '| search title=* '
             '| eval ts=strftime(strptime(original_event, "%d-%b-%Y %H:%M:%S%z"), "%Y-%m-%dT%H:%M:%S%z")'
             '| rename flags{{}} AS flags, threats{{}} AS threats '
             '| table dest_host, flags, group, ts, record_type, src_ip, title, severity, policy, threats, type'
-        ).format(EVENTS_SOURCETYPE)
+        ).format(params.index, EVENTS_SOURCETYPE, params.earliest, mvexpand)
 
     @staticmethod
     def alerts(alerts):
@@ -125,19 +127,6 @@ class Full(object):
 
 
 class Unfold(Full):
-    @staticmethod
-    def get_query():
-        return (
-            'search index=* sourcetype="{0}" type="alert" threats{{}}=* _index_earliest=-5m '
-            '| mvexpand threats{{}}'
-            '| lookup asocthreats name AS threats{{}} OUTPUT title, severity, policy '
-            '| eval policy=if(isnull(policy), 0, policy) '
-            '| search title=* '
-            '| eval ts=strftime(strptime(original_event, "%d-%b-%Y %H:%M:%S%z"), "%Y-%m-%dT%H:%M:%S%z")'
-            '| rename flags{{}} AS flags, threats{{}} AS threats '
-            '| table dest_host, flags, group, ts, record_type, src_ip, title, severity, policy, threats, type'
-        ).format(EVENTS_SOURCETYPE)
-
     @staticmethod
     def alerts(alerts):
         alerts_json = ""
