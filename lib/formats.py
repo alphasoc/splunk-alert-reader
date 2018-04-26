@@ -8,18 +8,21 @@ EVENTS_SOURCETYPE = "asoc:dns:event"
 
 class Full(object):
     @staticmethod
-    def get_query(params):
+    def get_query(params, last_indextime):
         mvexpand = "| mvexpand threats{} " if params.unfold else ""
 
         return (
-            'search index="{0}" sourcetype="{1}" type="alert" threats{{}}=* _index_earliest=-{2}m {3}'
+            'search index="{0}" sourcetype="{1}" type="alert" threats{{}}=* '
+            '_indextime > {2} _index_earliest=-{3}m {4}'
             '| lookup asocthreats name AS threats{{}} OUTPUT title, severity, policy '
             '| eval policy=if(isnull(policy), 0, policy) '
             '| search title=* '
-            '| eval ts=strftime(strptime(original_event, "%d-%b-%Y %H:%M:%S%z"), "%Y-%m-%dT%H:%M:%S%z")'
+            '| eval ts=strftime(strptime(original_event, "%d-%b-%Y %H:%M:%S%z"), "%Y-%m-%dT%H:%M:%S%z") '
             '| rename flags{{}} AS flags, threats{{}} AS threats '
-            '| table dest_host, flags, group, ts, record_type, src_ip, title, severity, policy, threats, type'
-        ).format(params.index, EVENTS_SOURCETYPE, params.earliest, mvexpand)
+            '| sort _indextime '
+            '| table _indextime, dest_host, flags, group, ts, record_type, src_ip, '
+            'title, severity, policy, threats, type'
+        ).format(params.index, EVENTS_SOURCETYPE, last_indextime, params.earliest, mvexpand)
 
     @staticmethod
     def alerts(alerts):

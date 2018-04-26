@@ -123,7 +123,7 @@ def create_config(config_path):
         raise ValueError("Configuration file not found")
     else:
         try:
-            with open(config_path, mode="r"):
+            with open(config_path, mode="r+"):
                 pass
         except IOError:
             raise ValueError("Could not open configuration file")
