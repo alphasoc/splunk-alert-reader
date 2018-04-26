@@ -34,8 +34,15 @@ def main():
     if params_query.timeout > 0:
         service.http = binding.HttpLib(binding.handler(timeout=params_query.timeout))
 
-    alerts_getter = getter.Getter(service, config, args.config, params_query)
-    alerts_getter.run()
+    ag = getter.Getter(service, config, args.config, params_query)
+    response = ag.run()
+
+    alerts = []
+    for alert in response:
+        alerts.append(alert)
+
+    if alerts:
+        ag.print_alerts(alerts)
 
 
 if __name__ == "__main__":

@@ -2,7 +2,6 @@ import sys
 import json
 
 from . import search
-from . import batch
 from . import formats
 from . import params
 
@@ -15,7 +14,6 @@ class Getter(object):
         self._config_query = params_query
 
         self._formatter = formats.Unfold if self._config_query.unfold else formats.Full
-        self._batch = batch.Batch()
 
         self._client = client
         self._output = sys.stdout
@@ -25,13 +23,13 @@ class Getter(object):
     def run(self):
         response = self._run_search()
 
-        for row in response.content:
-            alert = self._create_alert(row)
+        for raw in response.content:
+            alert = self._create_alert(raw)
             if alert is not None:
-                self._batch.add(alert)
+                yield alert
 
-        if not self._batch.is_empty():
-            self._flush()
+        if self._last_indextime > 0:
+            self._save_last_indextime()
 
     def _run_search(self):
         export = search.Export(self._client)
@@ -51,6 +49,18 @@ class Getter(object):
             last_indextime = 0
 
         return last_indextime
+
+    def _save_last_indextime(self):
+        if not self._config.has_section('processing'):
+            self._config.add_section('processing')
+
+        try:
+            self._config.set('processing', 'last_indextime', str(self._last_indextime))
+
+            with open(self._config_path, 'w') as configfile:
+                self._config.write(configfile)
+        except:
+            pass
 
     def _create_alert(self, row):
         try:
@@ -99,25 +109,6 @@ class Getter(object):
 
         return indextime
 
-    def _flush(self):
-        alerts = self._batch.get_list()
+    def print_alerts(self, alerts):
         formatted_alerts = self._formatter.alerts(alerts)
-
         self._output.write(formatted_alerts)
-
-        if self._last_indextime > 0:
-            self._save_last_indextime()
-
-        self._batch.clear()
-
-    def _save_last_indextime(self):
-        if not self._config.has_section('processing'):
-            self._config.add_section('processing')
-
-        try:
-            self._config.set('processing', 'last_indextime', str(self._last_indextime))
-
-            with open(self._config_path, 'w') as configfile:
-                self._config.write(configfile)
-        except:
-            pass
