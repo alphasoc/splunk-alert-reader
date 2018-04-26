@@ -9,7 +9,7 @@ class Export(object):
             search=query,
         )
 
-        return Response.from_rest_string(result)
+        return Response.from_rest(result)
 
 
 class Response(object):
@@ -18,5 +18,8 @@ class Response(object):
         self.content = content
 
     @classmethod
-    def from_rest_string(cls, result):
-        return cls(result.status, result.body)
+    def from_rest(cls, result):
+        if 'status' in result and 'body' in result:
+            return cls(result.status, result.body)
+        else:
+            raise ValueError("Unrecognized search response format: status code or body not found")
