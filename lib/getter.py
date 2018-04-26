@@ -7,13 +7,14 @@ from . import formats
 
 
 class Getter(object):
-    def __init__(self, client, settings):
-        self._batch = batch.Batch(settings['max_batch_items'])
-        self._unfold = True if settings['unfold'] else False
-        self._formatter = formats.Unfold if self._unfold else formats.Full
+    def __init__(self, client, params_query):
+        self._config_query = params_query
+
+        self._formatter = formats.Unfold if self._config_query.unfold else formats.Full
+        self._batch = batch.Batch()
 
         self._client = client
-        self._output = settings['output'] if settings['output'] else sys.stdout
+        self._output = sys.stdout
 
     def run(self):
         response = self._run_search()
@@ -23,15 +24,12 @@ class Getter(object):
             if alert is not None:
                 self._batch.add(alert)
 
-            if self._batch.is_ready():
-                self._flush()
-
         if not self._batch.is_empty():
             self._flush()
 
     def _run_search(self):
         export = search.Export(self._client)
-        query = self._formatter.get_query()
+        query = self._formatter.get_query(self._config_query)
 
         response = export.run(query)
         return response
@@ -49,6 +47,7 @@ class Getter(object):
         alert = {}
 
         alert['type'] = result.get('type', '')
+        alert['ip'] = result.get('src_ip', '')
         alert['fqdn'] = result.get('dest_host', '')
         alert['record_type'] = result.get('record_type', '')
 
@@ -60,12 +59,12 @@ class Getter(object):
         if risk:
             alert['risk'] = risk
 
-        th_id = result.get('threats')
-        th_title = result.get('title')
-        th_severity = result.get('severity')
-        th_policy = result.get('policy')
+        threats = result.get('threats')
+        title = result.get('title')
+        severity = result.get('severity')
+        policy = result.get('policy')
 
-        alert['threats'] = self._formatter.threats(th_id, th_title, th_severity, th_policy)
+        alert['threats'] = self._formatter.threats(threats, title, severity, policy)
 
         return alert
 
