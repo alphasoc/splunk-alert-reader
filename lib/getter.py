@@ -7,13 +7,14 @@ from . import params
 
 
 class Getter(object):
-    def __init__(self, client, config, config_path, params_query):
+    def __init__(self, client, config, config_path, params_query, params_output):
         self._config = config
         self._config_path = config_path
 
         self._config_query = params_query
+        self._config_output = params_output
 
-        self._formatter = formats.Unfold if self._config_query.unfold else formats.Full
+        self._formatter = formats.Formatter.init(self._config_output)
 
         self._client = client
         self._output = sys.stdout
@@ -64,51 +65,19 @@ class Getter(object):
 
     def _create_alert(self, row):
         try:
-            parsed_row = json.loads(row)
-            alert = self._format_alert(parsed_row['result'])
+            result = json.loads(row)['result']
+            alert = self._formatter.format(result)
+            self._update_indextime(result)
         except:
             alert = None
 
         return alert
 
-    def _format_alert(self, result):
-        alert = {}
-
-        alert['type'] = result.get('type', '')
-        alert['ip'] = result.get('src_ip', '')
-        alert['fqdn'] = result.get('dest_host', '')
-        alert['record_type'] = result.get('record_type', '')
-
-        alert['ts'] = self._formatter.date(result.get('ts'))
-        alert['groups'] = self._formatter.groups(result.get('group'))
-        alert['flags'] = self._formatter.flags(result.get('flags'))
-
-        risk = self._formatter.risk(result.get('severity'))
-        if risk:
-            alert['risk'] = risk
-
-        threats = result.get('threats')
-        title = result.get('title')
-        severity = result.get('severity')
-        policy = result.get('policy')
-
-        alert['threats'] = self._formatter.threats(threats, title, severity, policy)
-
-        indextime = self._parse_last_indextime(result.get('_indextime'))
+    def _update_indextime(self, result):
+        indextime = self._formatter.get_indextime(result)
         if indextime > self._last_indextime:
             self._last_indextime = indextime
 
-        return alert
-
-    @staticmethod
-    def _parse_last_indextime(indextime):
-        try:
-            indextime = int(indextime)
-        except:
-            indextime = 0
-
-        return indextime
-
     def print_alerts(self, alerts):
-        formatted_alerts = self._formatter.alerts(alerts)
+        formatted_alerts = self._formatter.dumps(alerts, self._config_query.unfold)
         self._output.write(formatted_alerts)

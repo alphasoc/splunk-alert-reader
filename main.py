@@ -25,6 +25,7 @@ def main():
         config = params.create_config(args.config)
         params_connection = params.Connection.from_config(config)
         params_query = params.Query.from_config(config)
+        params_output = params.Output.from_config(config)
     except Exception as exc:
         logging.critical(str(exc))
         return
@@ -40,7 +41,7 @@ def main():
     if params_query.timeout > 0:
         service.http = binding.HttpLib(binding.handler(timeout=params_query.timeout))
 
-    ag = getter.Getter(service, config, args.config, params_query)
+    ag = getter.Getter(service, config, args.config, params_query, params_output)
 
     for alert in ag.run():
         print(json.dumps(alert))
