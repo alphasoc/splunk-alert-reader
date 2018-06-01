@@ -9,6 +9,7 @@ else:
     import urllib.parse as urlparse
 
 DEFAULT_SPLUNK_SERVICE_PORT = 8089
+MAX_OUTPUT_JSON_VERSION = 2
 
 
 class Connection(object):
@@ -45,6 +46,40 @@ class Connection(object):
         return cls(scheme, host, port, username, password)
 
 
+class Output(object):
+    def __init__(self, format_version):
+        self.format_version = format_version
+
+    @classmethod
+    def from_config(cls, config):
+        if not config.has_section('output'):
+            config.add_section('output')
+
+        format_version = cls.get_format_version(config, 'format_version', max_version=MAX_OUTPUT_JSON_VERSION)
+
+        return cls(format_version)
+
+    @staticmethod
+    def get_format_version(config, option, section='output', max_version=1):
+        if not config.has_option(section, option):
+            return max_version
+
+        value = config.get(section, option)
+        if not value:
+            return max_version
+
+        try:
+            value = int(value)
+        except ValueError:
+            raise ValueError("Wrong {0} value in configuration file (required integer)".format(option))
+
+        if value < 1 or value > max_version:
+            raise ValueError(
+                "Wrong {0} value in configuration file (required >= 1 and <= {1})".format(option, max_version))
+
+        return value
+
+
 class Query(object):
     def __init__(self, timeout, unfold, earliest, index):
         self.timeout = timeout
@@ -59,7 +94,7 @@ class Query(object):
             config.add_section('query')
 
         timeout = cls.get_positive_int(config, 'timeout')
-        unfold = cls.get_unfold(config)
+        unfold = cls.get_boolean(config, 'unfold')
 
         earliest = cls.get_positive_int(config, 'earliest_minutes', default=5, include_zero=False)
         index = cls.get_index(config)
@@ -87,20 +122,20 @@ class Query(object):
         return value
 
     @staticmethod
-    def get_unfold(config):
-        if not config.has_option('query', 'unfold'):
-            return False
+    def get_boolean(config, option, section='query', default=False):
+        if not config.has_option(section, option):
+            return default
 
-        unfold = config.get('query', 'unfold')
-        if not unfold:
-            return False
+        value = config.get(section, option)
+        if not value:
+            return default
 
         try:
-            unfold = config.getboolean('query', 'unfold')
+            value = config.getboolean(section, option)
         except ValueError:
-            raise ValueError("Wrong unfold value in configuration file (required 0 or 1)")
+            raise ValueError("Wrong {0} value in configuration file (required 0 or 1)".format(option))
 
-        return unfold
+        return value
 
     @staticmethod
     def get_index(config):
