@@ -26,9 +26,11 @@ python main.py --config config.ini
 
 ## Alert format
 
-The tool returns AlphaSOC alerts in a JSON format, one alert per line. By default, alerts my consist of more than one corresponding raw DNS event and/or assigned threat. You can change this behavior by adjusting the `unfold` config option. When changed to 1, the tool will emit one entry per network event and threat.
+The tool returns AlphaSOC alerts in a JSON format, one alert per line. Alerts can be received from two apps: DNS Analytics for Splunk and Network Behavior Analytics for Splunk. There are significant differences between the output returned by these apps so alerts can't be fetched from both applications at single run. You can choose the application in the configuration file by setting `format_version` option. 
 
-### Alert example
+### DNS Analytics alert
+
+If you'd like to receive alerts from DNS Analytics, please set `format_version=1`. By default, DNS Analytics alerts may consist of more than one corresponding raw DNS event and/or assigned threat. You can change this behavior by adjusting the `unfold` config option. When changed to 1, the tool will emit one entry per network event and threat.
 
 ```json
 {
@@ -63,10 +65,86 @@ The tool returns AlphaSOC alerts in a JSON format, one alert per line. By defaul
 
 Note: the above would be unfolded to 4 separate alerts (as it contains two raw DNS event timestamps, and two assigned threats)
 
+### Network Behavior Analytics alert
+
+To receive alerts from Network Behavior Analytics, please set `format_version=2` in the configuration file. Currently Network Behavior Analytics can render alerts with two types of corresponding events: `dns` or `ip`. If you'd like to emit one entry per threat, please change `unfold` option to 1.
+
+```json
+{
+  "threats": {
+    "conn_unusual_port_volume": {
+      "policy": false,
+      "severity": 3,
+      "desc": "Multiple outbound connections to an unusual server port"
+    },
+    "c2_communication": {
+      "policy": false,
+      "severity": 5,
+      "desc": "C2 communication attempt indicating infection"
+    }
+  },
+  "risk": 5,
+  "eventType": "ip",
+  "wisdom": {
+    "c2Proto": "DarkComet",
+    "flags": ["c2"]
+  },
+  "groups": {
+    "london": {
+      "desc": "London"
+    }
+  },
+  "event": {
+    "proto": "tcp",
+    "bytesOut": 9866,
+    "srcPort": 64329,
+    "ts": "2018-06-06T07:33:04+00:00",
+    "destIP": "94.188.103.122",
+    "srcIP": "10.100.91.3",
+    "destPort": 1604,
+    "bytesIn": 21357
+  }
+}
+```
+
+In the above format, `event` object can contains raw DNS or IP event depending on `eventType` value. 
+
+#### DNS event
+
+```json
+{
+  "event": {
+    "srcIP": "10.14.1.43",
+    "query": "rproahjondxj.net",
+    "qtype": "A",
+    "ts": "2018-06-06T09:17:00+00:00"
+  }
+}
+```
+
+#### IP event
+
+```json
+{
+  "event": {
+    "proto": "tcp",
+    "bytesOut": 9866,
+    "srcPort": 64329,
+    "ts": "2018-06-06T07:33:04+00:00",
+    "destIP": "94.188.103.122",
+    "srcIP": "10.100.91.3",
+    "destPort": 1604,
+    "bytesIn": 21357
+  }
+}
+```
+
 ## Release History
 
 * 0.0.1
   * Initial release
+* 0.0.2
+  * Network Behavior Analytics compatibility
 
 ## License
 
