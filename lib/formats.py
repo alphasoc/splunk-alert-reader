@@ -1,117 +1,133 @@
 import os
 import json
 
+from . import queries
+from . import events
 from . import utils
 
-EVENTS_SOURCETYPE = "asoc:dns:event"
 
-
-class Full(object):
+class Formatter(object):
     @staticmethod
-    def get_query(params, last_indextime):
-        mvexpand = "| mvexpand threats{} " if params.unfold else ""
+    def init(config_output):
+        if config_output.format_version == 1:
+            return JsonDNSA()
 
-        return (
-            'search index="{0}" sourcetype="{1}" type="alert" threats{{}}=* '
-            '_indextime > {2} _index_earliest=-{3}m {4}'
-            '| lookup asocthreats name AS threats{{}} OUTPUT title, severity, policy '
-            '| eval policy=if(isnull(policy), 0, policy) '
-            '| search title=* '
-            '| eval ts=strftime(strptime(original_event, "%d-%b-%Y %H:%M:%S%z"), "%Y-%m-%dT%H:%M:%S%z") '
-            '| rename flags{{}} AS flags, threats{{}} AS threats '
-            '| sort _indextime '
-            '| table _indextime, dest_host, flags, group, ts, record_type, src_ip, '
-            'title, severity, policy, threats, type'
-        ).format(params.index, EVENTS_SOURCETYPE, last_indextime, params.earliest, mvexpand)
+        return JsonNBA()
 
     @staticmethod
-    def alerts(alerts):
-        return json.dumps({'events': alerts}) + os.linesep
-
-    @staticmethod
-    def date(timestamp):
-        if not timestamp:
-            return []
-
+    def get_indextime(result):
         try:
-            return [utils.iso8601_to_local(timestamp).isoformat()]
+            return int(result.get('_indextime'))
         except:
-            return []
+            return 0
 
     @staticmethod
-    def groups(groups):
-        if not groups:
-            return []
-
-        if utils.is_string(groups):
-            groups = [groups]
-
-        if not isinstance(groups, list):
-            return []
-
-        formatted = []
-        for group in groups:
-            formatted.append({'desc': group})
-
-        return formatted
+    def format_flags(flags):
+        return utils.Parser.mvfield(flags)
 
     @staticmethod
-    def risk(severities):
-        if not severities:
-            return None
-
-        if utils.is_string(severities):
+    def format_risk(severities):
+        if utils.Parser.is_string(severities):
             try:
                 return int(severities)
             except:
-                return None
+                raise ValueError("Unable to transform risk score to number")
 
         if isinstance(severities, int):
             return severities
 
         if not isinstance(severities, list):
-            return None
+            raise ValueError("Risk score has unexpected format")
 
         max_severity = -1
         for severity in severities:
             try:
-                severity = int(severity)
-                if severity > max_severity:
-                    max_severity = severity
+                max_severity = max(max_severity, int(severity))
             except:
                 continue
 
-        return max_severity if max_severity >= 0 else None
+        if max_severity < 0:
+            raise ValueError("Risk score not found in parsed result")
+
+        return max_severity
 
     @staticmethod
-    def flags(flags):
-        if not flags:
-            return []
+    def format_wisdom(wisdom):
+        wisdom = utils.Parser.spath_dict(wisdom)
+        if 'flags' not in wisdom:
+            wisdom['flags'] = []
 
-        if utils.is_string(flags):
-            flags = [flags]
+        return wisdom
 
-        if not isinstance(flags, list):
-            return []
+    @classmethod
+    def dumps(cls, alerts, unfold=False):
+        if unfold:
+            return cls._dumps_unfold(alerts)
 
-        return flags
+        return cls._dumps_full(alerts)
 
     @staticmethod
-    def threats(labels, title, severity, policy):
-        if not labels:
-            return {}
+    def _dumps_unfold(alerts):
+        alerts_json = ""
+        for alert in alerts:
+            alerts_json += json.dumps(alert) + os.linesep
 
-        if utils.is_string(labels):
-            labels = [labels]
+        return alerts_json
 
-        if utils.is_string(title):
-            title = [title]
+    @staticmethod
+    def _dumps_full(alerts):
+        return json.dumps({'events': alerts}) + os.linesep
 
-        if utils.is_string(severity):
-            severity = [severity]
 
-        if utils.is_string(policy):
-            policy = [policy]
+class JsonDNSA(Formatter):
+    def __init__(self):
+        self._query = queries.DNSA
+
+    def get_query(self, params, last_indextime):
+        return self._query.get(params, last_indextime)
+
+    @classmethod
+    def format(cls, result):
+        alert = {}
+
+        alert['type'] = result.get('type', '')
+        alert['ip'] = result.get('src_ip', '')
+        alert['fqdn'] = result.get('dest_host', '')
+        alert['record_type'] = result.get('record_type', '')
+
+        alert['ts'] = [utils.Parser.date(result.get('ts'))]
+        alert['groups'] = cls.format_groups(result.get('group'))
+        alert['flags'] = cls.format_flags(result.get('flags'))
+        alert['risk'] = cls.format_risk(result.get('severity'))
+
+        alert['threats'] = cls.format_threats(
+            result.get('threats'),
+            result.get('title'),
+            result.get('severity'),
+            result.get('policy'),
+        )
+
+        return alert
+
+    @staticmethod
+    def format_groups(groups):
+        groups = utils.Parser.mvfield(groups)
+
+        formatted = []
+        for group in groups:
+            if not utils.Parser.is_string(group):
+                continue
+
+            formatted.append({'label': group.lower(), 'desc': group})
+
+        return formatted
+
+    @staticmethod
+    def format_threats(labels, title, severity, policy):
+        labels = utils.Parser.mvfield(labels)
+        title = utils.Parser.mvfield(title)
+        severity = utils.Parser.mvfield(severity)
+        policy = utils.Parser.mvfield(policy)
 
         threats = []
         for index, label in enumerate(labels):
@@ -120,7 +136,7 @@ class Full(object):
                     'id': label,
                     'severity': int(severity[index]),
                     'desc': title[index],
-                    'policy': bool(policy[index]),
+                    'policy': utils.Parser.str_to_bool(policy[index]),
                 }
                 threats.append(threat)
             except:
@@ -129,11 +145,71 @@ class Full(object):
         return threats
 
 
-class Unfold(Full):
-    @staticmethod
-    def alerts(alerts):
-        alerts_json = ""
-        for alert in alerts:
-            alerts_json += json.dumps(alert) + os.linesep
+class JsonNBA(Formatter):
+    def __init__(self):
+        self._query = queries.NBA
 
-        return alerts_json
+    def get_query(self, params, last_indextime):
+        return self._query.get(params, last_indextime)
+
+    @classmethod
+    def format(cls, result):
+        alert = {}
+
+        alert['eventType'] = result.get('section', '')
+        alert['event'] = cls._format_event(result, alert['eventType'])
+        alert['groups'] = cls.format_groups(result.get('src_groups'))
+        alert['risk'] = cls.format_risk(result.get('severity'))
+        alert['wisdom'] = cls.format_wisdom(result.get('wisdom'))
+
+        alert['threats'] = cls.format_threats(
+            result.get('threats'),
+            result.get('title'),
+            result.get('severity'),
+            result.get('policy'),
+        )
+
+        return alert
+
+    @staticmethod
+    def _format_event(result, section):
+        if section == "dns":
+            return events.DNS.format(result)
+        elif section == "ip":
+            return events.IP.format(result)
+        else:
+            raise ValueError("Unsupported event type")
+
+    @staticmethod
+    def format_groups(groups):
+        groups = utils.Parser.mvfield(groups)
+
+        formatted = {}
+        for group in groups:
+            if not utils.Parser.is_string(group):
+                continue
+
+            formatted[group.lower()] = {'desc': group}
+
+        return formatted
+
+    @staticmethod
+    def format_threats(labels, title, severity, policy):
+        labels = utils.Parser.mvfield(labels)
+        title = utils.Parser.mvfield(title)
+        severity = utils.Parser.mvfield(severity)
+        policy = utils.Parser.mvfield(policy)
+
+        threats = {}
+        for index, label in enumerate(labels):
+            try:
+                threat = {
+                    'severity': int(severity[index]),
+                    'desc': title[index],
+                    'policy': utils.Parser.str_to_bool(policy[index]),
+                }
+                threats[label] = threat
+            except:
+                continue
+
+        return threats

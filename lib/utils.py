@@ -1,4 +1,63 @@
 import datetime
+import json
+
+
+class Parser(object):
+    @staticmethod
+    def number(value):
+        try:
+            return int(value)
+        except:
+            return None
+
+    @staticmethod
+    def is_string(value):
+        try:
+            return isinstance(value, basestring)
+        except NameError:
+            return isinstance(value, str)
+
+    @staticmethod
+    def mvfield(value):
+        if value is None or value == "":
+            return []
+
+        if Parser.is_string(value):
+            return [value]
+
+        if not isinstance(value, list):
+            return []
+
+        return value
+
+    @staticmethod
+    def str_to_bool(value):
+        if Parser.is_string(value):
+            value = value.lower()
+
+        return value in ['true', '1', 1, True]
+
+    @staticmethod
+    def date(timestamp):
+        try:
+            dtime = datetime.datetime.strptime(timestamp[:19], "%Y-%m-%dT%H:%M:%S")
+            tzone = Timezone(timestamp[19:])
+
+            return dtime.replace(tzinfo=tzone).isoformat()
+        except:
+            return ""
+
+    @staticmethod
+    def spath_dict(value):
+        try:
+            value = json.loads(value)
+        except:
+            value = {}
+
+        if not isinstance(value, dict):
+            value = {}
+
+        return value
 
 
 class Timezone(datetime.tzinfo):
@@ -10,7 +69,7 @@ class Timezone(datetime.tzinfo):
             hours = 0
             minutes = 0
 
-        elif is_string(tzstr):
+        elif Parser.is_string(tzstr):
             tzstrlen = len(tzstr)
             if tzstrlen == 6:
                 colon = 1
@@ -52,21 +111,3 @@ class Timezone(datetime.tzinfo):
 
     def __repr__(self):
         return u"<TZ: %s>" % self.name
-
-
-def iso8601_to_local(datestr):
-    try:
-        dtime = datetime.datetime.strptime(datestr[:19], "%Y-%m-%dT%H:%M:%S")
-        tzone = Timezone(datestr[19:])
-    except (TypeError, ValueError):
-        return None
-
-    dtime = dtime.replace(tzinfo=tzone)
-    return dtime
-
-
-def is_string(value):
-    try:
-        return isinstance(value, basestring)
-    except NameError:
-        return isinstance(value, str)
